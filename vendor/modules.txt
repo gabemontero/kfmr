@@ -1,5 +1,9 @@
 # github.com/go-logr/logr v1.4.2
 ## explicit; go 1.18
+# github.com/go-resty/resty/v2 v2.15.0
+## explicit; go 1.20
+github.com/go-resty/resty/v2
+github.com/go-resty/resty/v2/shellescape
 # github.com/golang/glog v1.2.2
 ## explicit; go 1.19
 github.com/golang/glog
@@ -20,15 +24,19 @@ github.com/kubeflow/model-registry/internal/mlmdtypes
 github.com/kubeflow/model-registry/pkg/api
 github.com/kubeflow/model-registry/pkg/core
 github.com/kubeflow/model-registry/pkg/openapi
-# golang.org/x/net v0.26.0
+# github.com/tdabasinskas/go-backstage/v2 v2.5.1
+## explicit; go 1.23
+github.com/tdabasinskas/go-backstage/v2/backstage
+# golang.org/x/net v0.27.0
 ## explicit; go 1.18
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
+golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/sys v0.21.0
+# golang.org/x/sys v0.22.0
 ## explicit; go 1.18
 golang.org/x/sys/unix
 golang.org/x/sys/windows
