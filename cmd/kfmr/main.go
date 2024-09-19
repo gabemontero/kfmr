@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	RHDH_GITHUB_OAUTH_TOKEN  = "RHDH_GITHUB_OAUTH_TOKEN"
-	CREATE_REG_MODEL_URI     = "/registered_models"
+	RHDH_GITHUB_OAUTH_TOKEN = "RHDH_GITHUB_OAUTH_TOKEN"
+	BASE_URI                = "/api/model_registry/v1alpha3"
+	CREATE_REG_MODEL_URI    = "/registered_models"
+	// CREATE_MODEL_VERSION_URI can also be '/model_versions' if you do not need to create ModelVersion in RegisteredModel
 	CREATE_MODEL_VERSION_URI = "/registered_models/%s/versions"
 	CREATE_MODEL_ART_URI     = "/model_artifacts"
 	LIST_REG_MODEL_URI       = "/registered_models"
@@ -23,7 +25,7 @@ const (
 
 func main() {
 	//backStageRootURL := "https://backstage-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
-	localKubeFlowMRURL := "http://localhost:8081/api/model_registry/v1alpha3"
+	localKubeFlowMRURL := "http://localhost:8081" + BASE_URI
 	for n, arg := range os.Args[1:] {
 		switch n {
 		case 1:
