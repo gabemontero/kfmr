@@ -1,28 +1,27 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/go-resty/resty/v2"
-	"github.com/kubeflow/model-registry/pkg/api"
-	"github.com/kubeflow/model-registry/pkg/core"
 	"github.com/kubeflow/model-registry/pkg/openapi"
 	"github.com/tdabasinskas/go-backstage/v2/backstage"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"log"
 	"os"
 	"strconv"
 	"time"
 )
 
 const (
-	RHDH_GITHUB_OAUTH_TOKEN = "RHDH_GITHUB_OAUTH_TOKEN"
+	RHDH_GITHUB_OAUTH_TOKEN  = "RHDH_GITHUB_OAUTH_TOKEN"
+	CREATE_REG_MODEL_URI     = "/registered_models"
+	CREATE_MODEL_VERSION_URI = "/registered_models/%s/versions"
+	CREATE_MODEL_ART_URI     = "/model_artifacts"
+	LIST_REG_MODEL_URI       = "/registered_models"
+	LIST_MODEL_VERSION_URI   = "/model_versions"
+	LIST_MODEL_ART_URI       = "/model_artifacts"
 )
 
 func main() {
-	//modeRegistryPort := "9090"
 	//backStageRootURL := "https://backstage-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
 	localKubeFlowMRURL := "http://localhost:8081/api/model_registry/v1alpha3"
 	for n, arg := range os.Args[1:] {
@@ -45,63 +44,35 @@ func main() {
 	}
 	t := time.Now().UnixNano()
 	tstr := strconv.Itoa(int(t))
-	createURI := "/registered_models"
-	createURL := localKubeFlowMRURL + createURI
-	createBody := fmt.Sprintf("{ \"name\": \"%s\", \"description\": \"%s description\" }", tstr, tstr)
 
-	resp, _ := restyClientKFMR.R().SetBody(createBody).Post(createURL)
-	postResp := resp.String()
-	rc := resp.StatusCode()
-	if rc != 200 || rc != 201 {
-		fmt.Fprintf(os.Stderr, "reg model post status code %d resp: %s", rc, postResp)
-	} else {
-		fmt.Fprintf(os.Stdout, "reg model post status code %d resp: %s", rc, postResp)
-	}
+	modelRegistry := openapi.RegisteredModel{}
+	modelRegistry.Name = tstr
+	desc := "Description for " + tstr
+	modelRegistry.Description = &desc
 
-	retJSON := make(map[string]string)
-	err := json.Unmarshal(resp.Body(), &retJSON)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "json unmarshall error: %s", err.Error())
-	}
-	registeredModelID, ok := retJSON["id"]
-	if !ok {
-		fmt.Fprintf(os.Stderr, "reg model fetch for id did not work")
-	} else {
-		fmt.Fprintf(os.Stdout, "reg model id %s", registeredModelID)
-	}
+	registeredModelID := postToModelRegistry(localKubeFlowMRURL+CREATE_REG_MODEL_URI, marshalBody(modelRegistry), restyClientKFMR)
 
-	createURI = fmt.Sprintf("/registered_models/%s/versions", registeredModelID)
-	createBody = fmt.Sprintf("{ \"name\": \"%s\", \"description\": \"%s description\", \"registeredModelId\": \"%s\" }", tstr, tstr, registeredModelID)
-	createURL = localKubeFlowMRURL + createURI
-	resp, _ = restyClientKFMR.R().SetBody(createBody).Post(createURL)
-	postResp = resp.String()
-	rc = resp.StatusCode()
-	if rc != 200 || rc != 201 {
-		fmt.Fprintf(os.Stderr, "model version post status code %d resp: %s", rc, postResp)
-	} else {
-		fmt.Fprintf(os.Stdout, "model version post status code %d resp: %s", rc, postResp)
-	}
+	createURI := fmt.Sprintf(CREATE_MODEL_VERSION_URI, registeredModelID)
+	modelVersion := openapi.NewModelVersion(tstr, registeredModelID)
+	modelVersion.Description = &desc
 
-	createURI = "/model_artifacts"
-	createBody = fmt.Sprintf("{ \"name\": \"%s\", \"description\": \"%s description\" }", tstr, tstr)
-	createURL = localKubeFlowMRURL + createURI
-	resp, _ = restyClientKFMR.R().SetBody(createBody).Post(createURL)
-	postResp = resp.String()
-	rc = resp.StatusCode()
-	if rc != 200 || rc != 201 {
-		fmt.Fprintf(os.Stderr, "model artifacts post status code %d resp: %s", rc, postResp)
-	} else {
-		fmt.Fprintf(os.Stdout, "model artifacts post status code %d resp: %s", rc, postResp)
-	}
+	postToModelRegistry(localKubeFlowMRURL+createURI, marshalBody(modelVersion), restyClientKFMR)
 
-	resp, _ = restyClientKFMR.R().Get(localKubeFlowMRURL + "/registered_models")
-	fmt.Fprintf(os.Stdout, "registered models %s\n\n", resp.String())
+	createURI = CREATE_MODEL_ART_URI
+	// FYI, ModelArtifact is not sympatico with latest REST API, as the artifactType field is not recognized in the POST,
+	// though the response object includes it ... feels like it is hard coded to 'model-artifact'
+	//modelArtifact := openapi.ModelArtifact{}
+	//modelArtifact.Name = &tstr
+	//modelArtifact.Description = &desc
+	body := fmt.Sprintf("{\"description\":\"Description for %s\",\"name\":\"%s\"}", tstr, tstr)
 
-	resp, _ = restyClientKFMR.R().Get(localKubeFlowMRURL + "/model_versions")
-	fmt.Fprintf(os.Stdout, "model versions %s\n\n", resp.String())
+	postToModelRegistry(localKubeFlowMRURL+createURI, body, restyClientKFMR)
 
-	resp, _ = restyClientKFMR.R().Get(localKubeFlowMRURL + "/model_artifacts")
-	fmt.Fprintf(os.Stdout, "model artifacts %s\n\n", resp.String())
+	fmt.Fprintf(os.Stdout, "registered models %s\n\n", getFromModelRegistry(localKubeFlowMRURL+LIST_REG_MODEL_URI, restyClientKFMR))
+
+	fmt.Fprintf(os.Stdout, "model versions %s\n\n", getFromModelRegistry(localKubeFlowMRURL+LIST_MODEL_VERSION_URI, restyClientKFMR))
+
+	fmt.Fprintf(os.Stdout, "model artifacts %s\n\n", getFromModelRegistry(localKubeFlowMRURL+LIST_MODEL_ART_URI, restyClientKFMR))
 
 	//rhdhOAuthGithubToken := os.Getenv(RHDH_GITHUB_OAUTH_TOKEN)
 	//restyClientRHDH := resty.New()
@@ -122,100 +93,54 @@ func main() {
 	component := backstage.ComponentEntityV1alpha1{}
 	fmt.Fprintf(os.Stdout, "component %#v\n\n", component)
 
-	//err = testGRPCToKubeFlowModelRegistry(modeRegistryPort)
-	//if err != nil {
-	//	os.Exit(1)
-	//}
 }
 
-func testGRPCToKubeFlowModelRegistry(port string) error {
-	conn, err := grpc.DialContext(
-		context.Background(),
-		fmt.Sprintf("localhost:%s", port),
-		grpc.WithReturnConnectionError(),
-		grpc.WithBlock(), // optional
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
+func marshalBody(v any) string {
+	jb, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("error dialing connection to mlmd server localhost:9090: %v", err)
+		fmt.Fprintf(os.Stderr, "json marshal err %s", err.Error())
+		return ""
 	}
-	defer conn.Close()
+	return string(jb)
+}
 
-	service, err := core.NewModelRegistryService(conn)
+func postToModelRegistry(url, body string, client *resty.Client) string {
+	resp, _ := client.R().SetBody(body).Post(url)
+	postResp := resp.String()
+	rc := resp.StatusCode()
+	if rc != 200 && rc != 201 {
+		fmt.Fprintf(os.Stderr, "%s post with body %s status code %d resp: %s\n", url, body, rc, postResp)
+	} else {
+		fmt.Fprintf(os.Stdout, "%s post with body %s status code %d resp: %s\n", url, body, rc, postResp)
+	}
+
+	retJSON := make(map[string]any)
+	err := json.Unmarshal(resp.Body(), &retJSON)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "error creating model registry core service: %v", err)
+		fmt.Fprintf(os.Stderr, "json unmarshall error for %s: %s\n", resp.Body(), err.Error())
 	}
+	id, ok := retJSON["id"]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "id fetch did not work for %#v\n", retJSON)
+	} else {
+		fmt.Fprintf(os.Stdout, "id %s\n", id)
+	}
+	return fmt.Sprintf("%s", id)
+}
 
-	modelName := "MODEL_NAME"
-	modelDescription := "MODEL_DESCRIPTION"
-
-	// for now the name must match (i.e. no regexp or wildcards
-	registeredModel, err := service.GetRegisteredModelByParams(&modelName, nil)
+func getFromModelRegistry(url string, client *resty.Client) string {
+	resp, _ := client.R().Get(url)
+	rc := resp.StatusCode()
+	getResp := resp.String()
+	if rc != 200 {
+		fmt.Fprintf(os.Stderr, "get for %s rc %d body %s\n", url, rc, getResp)
+	} else {
+		fmt.Fprintf(os.Stdout, "get for %s returned ok\n", url)
+	}
+	jb, err := json.MarshalIndent(getResp, "", "    ")
 	if err != nil {
-		log.Printf("unable to find model %s: %v", modelName, err)
-		// register a new model
-		registeredModel, err = service.UpsertRegisteredModel(&openapi.RegisteredModel{
-			Name:        modelName,
-			Description: &modelDescription,
-		})
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "error registering model: %v", err)
-			return err
-		}
-		// register model version
-		versionName := "VERSION_NAME"
-		versionDescription := "VERSION_DESCRIPTION"
-		versionScore := 0.83
-
-		modelVersion, err := service.UpsertModelVersion(&openapi.ModelVersion{
-			Name:        versionName,
-			Description: &versionDescription,
-			CustomProperties: &map[string]openapi.MetadataValue{
-				"score": {
-					MetadataDoubleValue: &openapi.MetadataDoubleValue{
-						DoubleValue: versionScore,
-					},
-				},
-			},
-		}, registeredModel.Id)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "error registering model version: %v", err)
-			return err
-		}
-
-		artifactName := "ARTIFACT_NAME"
-		artifactDescription := "ARTIFACT_DESCRIPTION"
-		artifactUri := "ARTIFACT_URI"
-
-		// register model artifact
-		modelArtifact, err := service.UpsertModelArtifact(&openapi.ModelArtifact{
-			Name:        &artifactName,
-			Description: &artifactDescription,
-			Uri:         &artifactUri,
-		}, modelVersion.Id)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "error creating model artifact: %v", err)
-		} else {
-			m, e := modelArtifact.ToMap()
-			if e != nil {
-				fmt.Println(fmt.Sprintf("error: %s", e.Error()))
-			}
-			fmt.Println(fmt.Sprintf("%#v", m))
-		}
+		fmt.Fprint(os.Stderr, "marshall indent error for %s: %s", getResp, err.Error())
 	}
+	return string(jb)
 
-	allVersions, err := service.GetModelVersions(api.ListOptions{}, registeredModel.Id)
-	if err != nil {
-		fmt.Fprintf(os.Stdout, "error retrieving model versions for model %s: %v", *registeredModel.Id, err)
-	}
-	if allVersions != nil {
-		for _, v := range allVersions.GetItems() {
-			m, e := v.ToMap()
-			if e != nil {
-				fmt.Println("error: %s", e.Error())
-			}
-			fmt.Println(fmt.Sprintf("%#v", m))
-		}
-	}
-	return nil
 }
