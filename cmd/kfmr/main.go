@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/go-resty/resty/v2"
@@ -12,9 +13,9 @@ import (
 )
 
 const (
-	RHDH_GITHUB_OAUTH_TOKEN = "RHDH_GITHUB_OAUTH_TOKEN"
-	BASE_URI                = "/api/model_registry/v1alpha3"
-	CREATE_REG_MODEL_URI    = "/registered_models"
+	RHDH_STATIC_TOKEN    = "RHDH_STATIC_TOKEN"
+	BASE_URI             = "/api/model_registry/v1alpha3"
+	CREATE_REG_MODEL_URI = "/registered_models"
 	// CREATE_MODEL_VERSION_URI can also be '/model_versions' if you do not need to create ModelVersion in RegisteredModel
 	CREATE_MODEL_VERSION_URI = "/registered_models/%s/versions"
 	CREATE_MODEL_ART_URI     = "/model_artifacts"
@@ -24,7 +25,7 @@ const (
 )
 
 func main() {
-	//backStageRootURL := "https://backstage-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
+	backStageRootURL := "https://redhat-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
 	localKubeFlowMRURL := "http://localhost:8081" + BASE_URI
 	for n, arg := range os.Args[1:] {
 		switch n {
@@ -76,24 +77,39 @@ func main() {
 
 	fmt.Fprintf(os.Stdout, "model artifacts %s\n\n", getFromModelRegistry(localKubeFlowMRURL+LIST_MODEL_ART_URI, restyClientKFMR))
 
-	//rhdhOAuthGithubToken := os.Getenv(RHDH_GITHUB_OAUTH_TOKEN)
-	//restyClientRHDH := resty.New()
-	//if restyClientRHDH == nil {
-	//	fmt.Fprintln(os.Stderr, "could not get rhdh resty client")
-	//	os.Exit(1)
-	//}
-	//restyClientRHDH.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
-	//
-	//resp, err = restyClientRHDH.R().
-	//	SetAuthToken(rhdhOAuthGithubToken).
-	//	SetHeader("Accept", "application/json").Get(backStageRootURL + "/api/catalog/entities")
-	//if err != nil {
-	//	fmt.Fprintf(os.Stderr, "get error: %s", err.Error())
-	//	os.Exit(1)
-	//}
+	rhdhOAuthGithubToken := os.Getenv(RHDH_STATIC_TOKEN)
+	restyClientRHDH := resty.New()
+	if restyClientRHDH == nil {
+		fmt.Fprintln(os.Stderr, "could not get rhdh resty client")
+		os.Exit(1)
+	}
+	restyClientRHDH.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 
-	component := backstage.ComponentEntityV1alpha1{}
-	fmt.Fprintf(os.Stdout, "component %#v\n\n", component)
+	resp, err := restyClientRHDH.R().
+		SetAuthToken(rhdhOAuthGithubToken).SetHeader("Accept", "application/json").
+		Get(backStageRootURL + "/api/catalog/locations")
+	if err == nil && resp.StatusCode() == 200 {
+		jb, _ := json.MarshalIndent(resp.String(), "", "    ")
+		if jb != nil {
+			fmt.Fprintf(os.Stdout, "entities %s\n", string(jb))
+		} else {
+			fmt.Fprintf(os.Stdout, "entities %s\n", resp.String())
+		}
+		locations := []backstage.LocationListResponse{}
+		json.Unmarshal(resp.Body(), &locations)
+		if len(locations) == 0 {
+			resp, err = restyClientRHDH.R().
+				SetAuthToken(rhdhOAuthGithubToken).
+				SetBody(map[string]interface{}{"target": "https://github.com/gabemontero/model-catalog/blob/owner-gabemontero/ai-catalog.yaml", "type": "url"}).
+				SetHeader("Accept", "application/json").Post(backStageRootURL + "/api/catalog/locations")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "get error: %s", err.Error())
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stdout, "backstage import produced rc %d and resp string %s\n", resp.StatusCode(), resp.String())
+
+		}
+	}
 
 }
 
