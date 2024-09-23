@@ -14,11 +14,12 @@ import (
 
 const (
 	RHDH_STATIC_TOKEN    = "RHDH_STATIC_TOKEN"
+	KFMR_TOKEN           = "KFMR_TOKEN"
 	BASE_URI             = "/api/model_registry/v1alpha3"
 	CREATE_REG_MODEL_URI = "/registered_models"
 	// CREATE_MODEL_VERSION_URI can also be '/model_versions' if you do not need to create ModelVersion in RegisteredModel
 	CREATE_MODEL_VERSION_URI = "/registered_models/%s/versions"
-	CREATE_MODEL_ART_URI     = "/model_artifacts"
+	CREATE_MODEL_ART_URI     = "/model_versions/%s/artifacts"
 	LIST_REG_MODEL_URI       = "/registered_models"
 	LIST_MODEL_VERSION_URI   = "/model_versions"
 	LIST_MODEL_ART_URI       = "/model_artifacts"
@@ -26,7 +27,7 @@ const (
 
 func main() {
 	backStageRootURL := "https://redhat-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
-	localKubeFlowMRURL := "http://localhost:8081" + BASE_URI
+	localKubeFlowMRURL := "https://modelregistry-public-rest.apps.gmontero415.devcluster.openshift.com" + BASE_URI
 	for n, arg := range os.Args[1:] {
 		switch n {
 		case 1:
@@ -45,6 +46,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "could not get kfmr resty client")
 		os.Exit(1)
 	}
+	restyClientKFMR.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+
 	t := time.Now().UnixNano()
 	tstr := strconv.Itoa(int(t))
 
@@ -59,17 +62,20 @@ func main() {
 	modelVersion := openapi.NewModelVersion(tstr, registeredModelID)
 	modelVersion.Description = &desc
 
-	postToModelRegistry(localKubeFlowMRURL+createURI, marshalBody(modelVersion), restyClientKFMR)
+	modelVersionID := postToModelRegistry(localKubeFlowMRURL+createURI, marshalBody(modelVersion), restyClientKFMR)
 
-	createURI = CREATE_MODEL_ART_URI
+	createURI = fmt.Sprintf(CREATE_MODEL_ART_URI, modelVersionID)
 	// FYI, ModelArtifact is not sympatico with latest REST API, as the artifactType field is not recognized in the POST,
-	// though the response object includes it ... feels like it is hard coded to 'model-artifact'
-	//modelArtifact := openapi.ModelArtifact{}
-	//modelArtifact.Name = &tstr
-	//modelArtifact.Description = &desc
-	body := fmt.Sprintf("{\"description\":\"Description for %s\",\"name\":\"%s\"}", tstr, tstr)
+	// though the response object includes it ... feels like it is hard coded to 'model-artifact'; now, when I used the
+	// version from the ODH operator install, it then complained about that field not being set:
+	// {"code":"","message":"invalid artifact type, must be either ModelArtifact or DocArtifact: bad request"}
+	modelArtifact := openapi.ModelArtifact{}
+	modelArtifact.Name = &tstr
+	modelArtifact.Description = &desc
+	modelArtifact.ArtifactType = "model-artifact"
+	//body := fmt.Sprintf("{\"description\":\"Description for %s\",\"name\":\"%s\"}", tstr, tstr)
 
-	postToModelRegistry(localKubeFlowMRURL+createURI, body, restyClientKFMR)
+	postToModelRegistry(localKubeFlowMRURL+createURI, marshalBody(modelArtifact), restyClientKFMR)
 
 	fmt.Fprintf(os.Stdout, "registered models %s\n\n", getFromModelRegistry(localKubeFlowMRURL+LIST_REG_MODEL_URI, restyClientKFMR))
 
@@ -123,7 +129,8 @@ func marshalBody(v any) string {
 }
 
 func postToModelRegistry(url, body string, client *resty.Client) string {
-	resp, _ := client.R().SetBody(body).Post(url)
+	fkrmToken := os.Getenv(KFMR_TOKEN)
+	resp, _ := client.R().SetAuthToken(fkrmToken).SetBody(body).Post(url)
 	postResp := resp.String()
 	rc := resp.StatusCode()
 	if rc != 200 && rc != 201 {
@@ -147,7 +154,8 @@ func postToModelRegistry(url, body string, client *resty.Client) string {
 }
 
 func getFromModelRegistry(url string, client *resty.Client) string {
-	resp, _ := client.R().Get(url)
+	fkrmToken := os.Getenv(KFMR_TOKEN)
+	resp, _ := client.R().SetAuthToken(fkrmToken).Get(url)
 	rc := resp.StatusCode()
 	getResp := resp.String()
 	if rc != 200 {
