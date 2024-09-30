@@ -26,7 +26,8 @@ const (
 )
 
 func main() {
-	backStageRootURL := "https://redhat-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
+	//backStageRootURL := "https://redhat-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
+	backStageRootURL := "https://backstage-developer-hub-ggmtest.apps.gmontero415.devcluster.openshift.com"
 	localKubeFlowMRURL := "https://modelregistry-public-rest.apps.gmontero415.devcluster.openshift.com" + BASE_URI
 	for n, arg := range os.Args[1:] {
 		switch n {
